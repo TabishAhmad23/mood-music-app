@@ -1,101 +1,20 @@
-import spotipy
-from spotipy.oauth2 import SpotifyClientCredentials
+# ========== Imports ==========
+import os
+import cv2
+import numpy as np
+import requests
+from dotenv import load_dotenv
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
-import numpy as np
-import cv2
+from pydantic import BaseModel
 from deepface import DeepFace
 
-# Spotify credentials
-SPOTIFY_CLIENT_ID = "37b8207aa1c64599a567490f524e5f57"
-SPOTIFY_CLIENT_SECRET = "53f41a4aa5a2485c9effc123c98258c4"
+# ========== Load Environment Variables ==========
+load_dotenv()
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
-sp = spotipy.Spotify(auth_manager=SpotifyClientCredentials(
-    client_id=SPOTIFY_CLIENT_ID,
-    client_secret=SPOTIFY_CLIENT_SECRET
-))
-
-# Map each emotion to Spotify genres
-mood_to_genres = {
-    "happy": ["pop", "dance"],
-    "sad": ["acoustic", "piano"],
-    "angry": ["metal", "hard-rock"],
-    "fear": ["ambient", "soundtrack"],
-    "disgust": ["experimental", "industrial"],
-    "surprise": ["electronic", "funk"],
-    "neutral": ["chill", "lofi"]
-}
-
-# Return Spotify playlist link for an emotion
-"""def get_playlist_for_emotion(emotion):
-    emotion = emotion.strip().lower()
-    print("Detected emotion:", emotion)
-    genres = mood_to_genres.get(emotion, ["chill"])
-    print("Search query:", f"{genres[0]} playlist")
-
-
-    try:
-        results = sp.search(q=query, type="playlist", limit=1)
-        playlists = results.get("playlists", {}).get("items", [])
-        if playlists:
-            playlist = playlists[0]
-            return {
-                "url": playlist["external_urls"]["spotify"],
-                "name": playlist["name"],
-                "image": playlist["images"][0]["url"] if playlist["images"] else None
-            }
-    except Exception as e:
-        print("Spotify error:", e)
-
-    return {
-        "url": "https://open.spotify.com/playlist/37i9dQZF1DX4WYpdgoIcn6",
-        "name": "Chill Hits",
-        "image": None}"""
-
-def get_playlist_for_emotion(emotion):
-    emotion = emotion.strip().lower()
-    genres = mood_to_genres.get(emotion, ["chill"])
-    
-    primary_query = f"{genres[0]} genre playlist"
-    fallback_query = f"top {genres[0]} songs"
-
-    def search_spotify(query):
-        print(f"Spotify query: {query}")
-        try:
-            results = sp.search(q=query, type="playlist", limit=1)
-            playlists = results.get("playlists", {}).get("items", [])
-            print("Playlist search result:", playlists)
-
-            for playlist in playlists:
-                if playlist:
-                    return {
-                        "url": playlist["external_urls"]["spotify"],
-                        "name": playlist["name"],
-                        "image": playlist["images"][0]["url"] if playlist["images"] else None
-                    }
-        except Exception as e:
-            print("Spotify search error:", e)
-        return None
-
-    result = search_spotify(primary_query)
-    if result:
-        return result
-
-    result = search_spotify(fallback_query)
-    if result:
-        return result
-
-    return {
-        "url": "https://open.spotify.com/playlist/37i9dQZF1DX4WYpdgoIcn6",
-        "name": "Chill Hits (Fallback)",
-        "image": None
-    }
-
-
-
-# FastAPI app setup
+# ========== FastAPI Setup ==========
 app = FastAPI()
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -104,42 +23,98 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ========== Models ==========
+class MoodInput(BaseModel):
+    mood_description: str
+
+# ========== Helper Functions ==========
+def analyze_emotion(img) -> dict:
+    result = DeepFace.analyze(
+        img,
+        actions=['emotion'],
+        detector_backend='retinaface',
+        enforce_detection=False
+    )
+    data = result[0]
+    dominant_emotion = data["dominant_emotion"].strip().lower()
+    raw_emotions = data["emotion"]
+    emotions = {k: float(v) for k, v in raw_emotions.items()}
+    return {"dominant_emotion": dominant_emotion, "emotions": emotions}
+
+# ========== Routes ==========
 @app.post("/analyze")
 async def analyze(file: UploadFile = File(...)):
     try:
         img_bytes = await file.read()
-        nparr = np.frombuffer(img_bytes, np.uint8)
-        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        img_array = np.frombuffer(img_bytes, np.uint8)
+        img = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
 
-        result = DeepFace.analyze(
-            img,
-            actions=['emotion'],
-            detector_backend='retinaface',
-            enforce_detection=False
-        )
-
-        # ✅ Validate result
-        if not result or not isinstance(result, list):
-            return {"error": "No result from DeepFace"}
-        
-        data = result[0]
-        if "dominant_emotion" not in data or "emotion" not in data:
-            return {"error": "Incomplete emotion data from DeepFace"}
-
-        dominant_emotion = data["dominant_emotion"].strip().lower()
-        raw_emotions = data["emotion"]
-
-        # Convert all values to native floats
-        emotions = {k: float(v) for k, v in raw_emotions.items()}
-        playlist_url = get_playlist_for_emotion(dominant_emotion)
-        playlist_data = get_playlist_for_emotion(dominant_emotion)
-
+        emotion_data = analyze_emotion(img)
         return {
-        "dominant_emotion": dominant_emotion,
-        "emotions": emotions,
-        "playlist": playlist_data
-}
+            "dominant_emotion": emotion_data["dominant_emotion"],
+            "emotions": emotion_data["emotions"]
+        }
 
     except Exception as e:
-        print("Backend error:", e)
+        print("Analyze error:", e)
+        return {"error": str(e)}
+
+@app.post("/ai-recommend")
+async def ai_recommend(data: MoodInput):
+    """
+    Accepts mood_description, fetches user's saved Spotify songs,
+    and asks Gemini which ones match the mood best.
+    """
+
+    # TEMP: Replace with your real token from https://developer.spotify.com/console/get-current-user-saved-tracks/
+    access_token = "1POdFZRZbvb...qqillRxMr2z"
+
+    try:
+        # Step 1: Get user’s saved tracks
+        headers = {"Authorization": f"Bearer {access_token}"}
+        response = requests.get(
+            "https://api.spotify.com/v1/me/tracks?limit=10",
+            headers=headers
+        )
+
+        if response.status_code != 200:
+            return {"error": "Failed to fetch Spotify tracks", "details": response.text}
+
+        data_json = response.json()
+        items = data_json.get("items", [])
+        if not items:
+            return {"error": "No saved tracks found in user's library."}
+
+        # Step 2: Format song list for Gemini
+        song_lines = []
+        for i, item in enumerate(items, start=1):
+            track = item["track"]
+            name = track["name"]
+            artist = track["artists"][0]["name"]
+            song_lines.append(f"{i}. {name} - {artist}")
+        
+        song_list_text = "\n".join(song_lines)
+        mood = data.mood_description.strip()
+
+        # Step 3: Send to Gemini
+        gemini_prompt = (
+            f"Based on the following mood: '{mood}', "
+            f"select the top 3 songs from this list that emotionally fit best:\n\n"
+            f"{song_list_text}\n\n"
+            f"Only return the selected 3 songs as a list of 'Title - Artist'."
+        )
+
+        gemini_response = requests.post(
+            f"https://generativelanguage.googleapis.com/v1beta/models/text-bison-001:generateText?key={GOOGLE_API_KEY}",
+            headers={"Content-Type": "application/json"},
+            json={"prompt": {"text": gemini_prompt}, "temperature": 0.7}
+        )
+
+        if gemini_response.status_code != 200:
+            return {"error": "Gemini API failed", "details": gemini_response.text}
+
+        output = gemini_response.json().get("candidates", [{}])[0].get("output", "").strip()
+        return {"suggested_songs": output}
+
+    except Exception as e:
         return {"error": str(e)}

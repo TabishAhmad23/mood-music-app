@@ -1,5 +1,8 @@
 .App {
   text-align: center;
+  min-height: 100vh;
+  background-color: #282c34;
+  color: white;
 }
 
 .App-logo {
@@ -14,14 +17,12 @@
 }
 
 .App-header {
-  background-color: #282c34;
-  min-height: 100vh;
+  padding: 20px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   font-size: calc(10px + 2vmin);
-  color: white;
 }
 
 .App-link {
@@ -35,4 +36,103 @@
   to {
     transform: rotate(360deg);
   }
+}
+
+.loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  font-size: 1.5rem;
+  color: #61dafb;
+}
+
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+.login-button, .logout-button {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: all 0.3s ease;
+}
+
+.login-button {
+  background-color: #1DB954;
+  color: white;
+}
+
+.login-button:hover {
+  background-color: #1ed760;
+}
+
+.logout-button {
+  background-color: #ff4444;
+  color: white;
+}
+
+.logout-button:hover {
+  background-color: #cc0000;
+}
+
+.error-message {
+  color: #ff4444;
+  background-color: #fff5f5;
+  padding: 10px;
+  border-radius: 4px;
+  margin: 10px 0;
+  width: 100%;
+  max-width: 500px;
+}
+
+.file-input {
+  margin: 20px 0;
+  padding: 10px;
+  border: 2px dashed #61dafb;
+  border-radius: 4px;
+  cursor: pointer;
+  width: 100%;
+  max-width: 500px;
+}
+
+.result {
+  margin-top: 20px;
+  padding: 20px;
+  background-color: rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  width: 100%;
+  max-width: 500px;
+}
+
+.emotions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.emotion-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.bar-container {
+  flex: 1;
+  height: 20px;
+  background-color: rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.bar {
+  height: 100%;
+  background-color: #61dafb;
+  transition: width 0.3s ease;
 }
